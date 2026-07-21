@@ -10,10 +10,13 @@ from .core import (
     error_models,
     handle_base_error,
 )
+from .decorator import Raises, with_errors
 
 __all__ = (
     "BaseError",
     "ErrorResponse",
+    "Raises",
     "error_models",
     "handle_base_error",
+    "with_errors",
 )

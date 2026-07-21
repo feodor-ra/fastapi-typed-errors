@@ -32,6 +32,7 @@ ignore = [
     "TC",                     # flake8-type-checking: runtime type information is the point of this package
     "CPY",                    # flake8-copyright: no per-file copyright notices
     "missing-trailing-comma", # COM812: conflicts with the formatter
+    "relative-imports",       # TID252: relative imports inside the package are welcome
 ]
 
 [tool.ruff.lint.pydocstyle]
