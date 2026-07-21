@@ -6,7 +6,7 @@ Public PyPI package: typed HTTP errors for FastAPI — exact `Literal` error cod
 
 ## Status
 
-Draft. The `core` and `decorator` layers are implemented. Linters/type checker are configured (see Conventions); tests are not set up yet (verification via ad-hoc smoke scripts outside the repo). Licensed under MIT (`LICENSE` + PEP 639 metadata in `pyproject.toml`).
+Draft. The `core` and `decorator` layers are implemented. Linters/type checker and pytest are configured (see Conventions). Licensed under MIT (`LICENSE` + PEP 639 metadata in `pyproject.toml`).
 
 ## Architecture — three independent layers
 
@@ -69,7 +69,12 @@ src-layout, package `src/fastapi_typed_errors/`:
 - Type checker: **ty**, max strictness (`[tool.ty.rules] all = "error"`). Suppressions use ty-style comments (`# ty: ignore[rule]`); ty does not recognize mypy rule codes inside `# type: ignore[...]`.
 - Linter/formatter: **ruff** with `select = ["ALL"]` + `preview = true`, ignoring only the `TC` and `CPY` modules and `missing-trailing-comma` (COM812, formatter conflict); pydocstyle convention = google. Formatter: double quotes, `line-length = 120`. Import order: ruff isort defaults (stdlib `import` then `from` imports, third-party, local) — exactly the preferred style, no extra config needed.
 - Ruff suppressions use the new `# ruff:ignore[rule-name]` syntax — the preview rule `noqa-comments` forbids legacy `# noqa` comments. Single-rule entries in `lint.ignore` must use rule *names*, not codes (preview rule `rule-codes-in-selectors`).
-- Both tools are pinned exactly (`==`) in the `dev` dependency group; bump deliberately (`uv add --dev --bounds exact ty ruff`).
+- ruff and ty are pinned exactly (`==`) in the `dev` dependency group; bump deliberately (`uv add --dev --bounds exact ty ruff`). Test tooling (`pytest`, `pytest-cov`, `httpx2` for `TestClient`) uses compatible-release pins (`~=`).
+- Tests live in `tests/`, mirroring the package structure (`tests/core/test_base.py` ↔ `src/.../core/base.py`); the directory is not a package (INP001 ignored, S101 too: pytest asserts; EM101 ignored — literal details in `raise` are the package's own user-facing pattern). Run: `just test` (`uv run pytest --cov`); pytest config and coverage live in `pyproject.toml`. **Coverage bar: `fail_under = 100`** (branch coverage on). Test-writing rules are introduced incrementally by the user — check recent test files for the current style before writing new ones.
+- Async tests are plain `async def` — the anyio pytest plugin picks them up via `tests/conftest.py` (an `anyio_backend` fixture + a `pytest_collection_modifyitems` hook auto-marking coroutine tests; anyio has no pytest-asyncio-style "auto" mode).
+- Registration-only stub endpoints in tests end with `raise NotImplementedError` (ty `all = "error"` rejects `...` bodies with non-`None` return annotations outside stubs/protocols).
+- Test structure: **AAA** (Arrange / Act / Assert), the blocks separated by blank lines; single-expression tests may collapse to one line (e.g. `assert error_models(X) is X.model`). Every test opens with a short one-line docstring describing the case; test functions are annotated `-> None`.
+- Prefer pytest **fixtures** for reusable arrange values (request objects, configured apps, built artifacts) — typed, with a docstring and a `Returns:` section. Module level is only for error classes/enums that must exist at import time (they are used in type positions). Don't name a fixture `request` — it clashes with pytest's built-in.
 - Lint everything: `just lint` (ruff format --check, ruff check, ty check). Run `uv run ruff format` to apply formatting.
 - Environment and build: uv (`uv sync`, `uv run python ...`), build backend `uv_build`.
-- Run smoke checks against a live FastAPI app: `uv run --with httpx python <script>` (httpx is needed by `TestClient` and is not a package dependency).
+- Run smoke checks against a live FastAPI app: `uv run python <script>` (`httpx2` for `TestClient` is in the dev group, so no `--with` is needed anymore).

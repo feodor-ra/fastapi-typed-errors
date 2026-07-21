@@ -38,11 +38,34 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "assert",                     # S101: pytest is built on assert
+    "implicit-namespace-package", # INP001: the tests directory is not a package
+    "raw-string-in-exception",    # EM101: raising errors with a literal detail is the package's own user-facing pattern
+]
+
 [tool.ty.rules]
 all = "error"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers"
+
+[tool.coverage.run]
+source = ["fastapi_typed_errors"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 100
+
 [dependency-groups]
 dev = [
+    "anyio~=4.14.2",
+    "httpx2~=2.7.0",
+    "pytest~=9.1.1",
+    "pytest-cov~=7.1.0",
     "ruff==0.15.22",
     "ty==0.0.61",
 ]
