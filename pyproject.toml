@@ -1,0 +1,47 @@
+[project]
+name = "fastapi-typed-errors"
+version = "0.1.0"
+description = "Typed error responses for FastAPI: Literal error codes, discriminated unions in OpenAPI, single source of truth"
+readme = "README.md"
+authors = [
+    { name = "Fedor Ratschew", email = "feodor.ra@me.com" },
+]
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["fastapi", "errors", "openapi", "typed", "pydantic"]
+dependencies = [
+    "fastapi>=0.115",
+    "pydantic>=2.9",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.30,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 120
+preview = true
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "TC",                     # flake8-type-checking: runtime type information is the point of this package
+    "CPY",                    # flake8-copyright: no per-file copyright notices
+    "missing-trailing-comma", # COM812: conflicts with the formatter
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ty.rules]
+all = "error"
+
+[dependency-groups]
+dev = [
+    "ruff==0.15.22",
+    "ty==0.0.61",
+]
