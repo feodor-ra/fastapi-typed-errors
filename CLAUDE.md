@@ -6,7 +6,7 @@ Public PyPI package: typed HTTP errors for FastAPI — exact `Literal` error cod
 
 ## Status
 
-Draft. The `core` and `decorator` layers are implemented. Linters/type checker and pytest are configured (see Conventions). Licensed under MIT (`LICENSE` + PEP 639 metadata in `pyproject.toml`).
+Draft. The `core` and `decorator` layers plus the layer-3 CI checker are implemented (the analysis `auto`-fill mode is not yet). Linters/type checker and pytest are configured (see Conventions); the whole package is at 100% branch coverage. Licensed under MIT (`LICENSE` + PEP 639 metadata in `pyproject.toml`).
 
 ## Architecture — three independent layers
 
@@ -14,7 +14,7 @@ Each layer is usable without the next one:
 
 1. **`core`** (done) — `BaseError`, the `BaseErrorMeta` metaclass, `ErrorResponse`, `error_models()`, `handle_base_error`.
 2. **`decorator`** (done) — `with_errors(router)` + `Raises[...]` in the return annotation (Annotated syntax). An instance patch of `add_api_route` as the single interception point; subclassing `APIRouter` AND a wrapper object were both rejected (see decorator-layer decisions).
-3. **`analysis`** (planned) — AST walk over `raise` statements: a CI checker (declared vs actually raised) and `auto=True` (auto-populating `responses`). Study fastapi-docx before implementing.
+3. **`analysis`** (CI checker done; `auto` planned) — AST walk over `raise` statements. `check_raises()` compares declared `Raises[...]` against errors actually raised (endpoint + helpers + dependency tree); a typer CLI (`cli` extra) wraps it. `auto=True` (auto-populating `responses` from the same walk) is the remaining piece. Design inspired by fastapi-docx (MIT), whose flaws are deliberately not inherited (see analysis-layer decisions).
 
 ## Layout
 
@@ -25,16 +25,19 @@ src-layout, package `src/fastapi_typed_errors/`:
 - `core/handlers.py` — `handle_base_error`.
 - `decorator/raises.py` — the `Raises` marker (validated at construction).
 - `decorator/wrapper.py` — `with_errors()` + the `add_api_route` patch and private helpers.
+- `analysis/visitor.py` — `collect_raised()` + the AST worklist (`_collect`/`_scan`/`_BodyVisitor`/`_resolve`).
+- `analysis/checker.py` — `check_raises()` + `RaisesReport`/`RouteDiscrepancy`.
+- `analysis/cli.py` — `main()` launcher (no top-level `typer` import); `analysis/_cli.py` — the typer app (lazy-loaded).
 - `__init__.py` / subpackage `__init__.py` — public API re-exports.
 - `py.typed` — the package is typed.
 
 ## Key core-layer decisions
 
-- Python ≥ 3.12 (PEP 695 generics); dependencies: fastapi ≥ 0.115, pydantic ≥ 2.9 (`model_title_generator`).
+- Python ≥ 3.12 (PEP 695 generics); dependencies: fastapi `>=0.115,!=0.137.*,!=0.138.*` (routing-gap exclusion, see analysis-layer decisions), pydantic ≥ 2.9 (`model_title_generator`).
 - The user brings their own enum: a code is any `StrEnum` member **or** a bare `Literal["CODE"]` (the `T: str` bound covers both).
 - The metaclass extracts the code from `__orig_bases__` (`get_origin`/`get_args`), filtering bases via `isinstance(get_origin(orig_base), mcs)`; it writes `error_code` and `model` into the namespace **before** `type.__new__` — otherwise the metaclass properties would intercept the assignment.
 - Eager validation: parametrizing with anything but a `TypeVar` (intermediate generic base) or a single-string `Literal` raises `TypeError` at class definition time — a mistake like `BaseError[str]` must not surface as an opaque 500 at request time.
-- `response_base: ClassVar` — a substitutable response model base; users subclass `ErrorResponse` generically (`class MyResp[T: str](ErrorResponse[T])`) and point their own error base class at it.
+- `response_base: ClassVar` — a substitutable response model base; users subclass `ErrorResponse` generically (`class MyResp[T: str](ErrorResponse[T])`) and point their own error base class at it. **Flat extensions only** (user decision 2026-07-22): nested envelopes (`data: ErrorResponse[T]`) are out of scope — pydantic discriminated unions cannot discriminate on a nested field, so `error_models()` unions would break; the workaround (non-subclass `response_base` + overridden `to_response()`) exists but is deliberately undocumented.
 - `description: ClassVar[str | None]` — the default `detail` and the OpenAPI status description (consumed by the decorator layer).
 - OpenAPI titles: `model_title_generator` (`_model_title`) renders `ErrorResponse[NOT_FOUND]` instead of pydantic's default that embeds the enum member `repr()` with angle brackets.
 - `error_models()`: deduplicates repeats; one code shared by two distinct models → a clear `TypeError` (a discriminated union requires unique discriminator values).
@@ -57,6 +60,18 @@ src-layout, package `src/fastapi_typed_errors/`:
 - Unresolvable type hints (NameError/TypeError from `get_type_hints`): if the raw return annotation does not mention `Raises` → silent passthrough (stock FastAPI tolerates the `TYPE_CHECKING` pattern and never resolves return hints under an explicit `response_model`); if it does → fail fast with a clear `TypeError`. Never resolve stricter than stock for marker-free endpoints.
 - Follow-up idea (not implemented): PEP 692 `Unpack[TypedDict]` typing for registration kwargs.
 
+## Key analysis-layer decisions
+
+- **FastAPI routing gap excluded at the dependency level** (user decision 2026-07-23): `fastapi>=0.115,!=0.137.*,!=0.138.*`. 0.137 introduced the lazy `_IncludedRouter` tree (PR #15745) but not the supported `iter_route_contexts` iterator (landed 0.139), so nested includes cannot be walked on 0.137–0.138. Two clean regimes remain: ≤0.136 eager-flat `routes`, ≥0.139 lazy with `iter_route_contexts`.
+- Route enumeration: `getattr(fastapi.routing, "iter_route_contexts", None)` looked up **at call time** (both branches monkeypatchable/coverable); absent ⟹ eager regime ⟹ flat `target.routes`. Filter `isinstance(original_route, APIRoute)`; dedup by `id(original_route)` (multi-prefix include yields the same route twice).
+- Declared set is re-derived from the endpoint via the decorator's `_unwrap_endpoint`/`_return_annotation`/`_find_raises` (imported from `..decorator.wrapper`) — **not** from `route.response_model` (lost under explicit `response_model=` and our Response/None normalization). Works with or without `with_errors`.
+- Raised set = `collect_raised(endpoint)` ∪ `collect_raised(dep.call)` over the recursive `route.dependant` tree, **skipping security schemes** (`isinstance(inspect.unwrap(peeled call), SecurityBase)` — they raise stock `HTTPException`, never `BaseError`).
+- Walker design (avoids fastapi-docx's flaws): BFS worklist + **pure per-function scan** (`_scan` depends only on the code object → cache keyed by `__code__` is depth-safe; resolution is per-object so closures resolve correctly). Visited-set + `max_depth` cap kill recursion (fastapi-docx has neither). Real `issubclass` + `(error_code, http_status)` probe instead of name-matching. Never `eval()`s — status/code live on the class.
+- `_BodyVisitor` descends into statement bodies only (skips annotations/decorators/defaults), so a route's own `Raises[...]` return annotation is not counted, and local nested `def`s ARE walked. Catches `raise X`, `raise X(...)`, `raise ... from e`. **Argument heuristic**: an error class passed as a call argument counts as potentially raised (the `get_or_404(error=X)` pattern) — carve-out for `isinstance`/`issubclass`. Over-approximation is safe for CI (surfaces as `undeclared`); documented false-negatives (locals, `self.*`, dynamic dispatch, bare streams) keep `overdeclared` a failure by default.
+- Two discrepancy buckets, reported separately: `undeclared` (always a failure), `overdeclared` (failure by default; `allow_overdeclared=True` strips it at report-build time). `RaisesReport.ok` = `not routes`; no `__bool__` (ambiguous).
+- CLI split: `cli.py::main()` is the console-script entry with **no top-level `typer` import** (degrades to exit 2 + install hint without the `cli` extra); `_cli.py` holds the typer app (module-level `typer.Typer()`, needs the extra). A `@cli.callback()` forces `check` to be a named subcommand (a single typer command would otherwise collapse and swallow the app-path argument). Exit codes: 0 ok, 1 discrepancies, 2 usage/loading.
+- `collect_raised`/`_scan` are the reuse point for the future `auto=True`.
+
 ## Conventions
 
 - This file and all code artifacts (docstrings, comments) are in English; communication with the user is in Russian.
@@ -69,8 +84,8 @@ src-layout, package `src/fastapi_typed_errors/`:
 - Type checker: **ty**, max strictness (`[tool.ty.rules] all = "error"`). Suppressions use ty-style comments (`# ty: ignore[rule]`); ty does not recognize mypy rule codes inside `# type: ignore[...]`.
 - Linter/formatter: **ruff** with `select = ["ALL"]` + `preview = true`, ignoring only the `TC` and `CPY` modules and `missing-trailing-comma` (COM812, formatter conflict); pydocstyle convention = google. Formatter: double quotes, `line-length = 120`. Import order: ruff isort defaults (stdlib `import` then `from` imports, third-party, local) — exactly the preferred style, no extra config needed.
 - Ruff suppressions use the new `# ruff:ignore[rule-name]` syntax — the preview rule `noqa-comments` forbids legacy `# noqa` comments. Single-rule entries in `lint.ignore` must use rule *names*, not codes (preview rule `rule-codes-in-selectors`).
-- ruff and ty are pinned exactly (`==`) in the `dev` dependency group; bump deliberately (`uv add --dev --bounds exact ty ruff`). Test tooling (`pytest`, `pytest-cov`, `httpx2` for `TestClient`) uses compatible-release pins (`~=`).
-- Tests live in `tests/`, mirroring the package structure (`tests/core/test_base.py` ↔ `src/.../core/base.py`); the directory is not a package (INP001 ignored, S101 too: pytest asserts; EM101 ignored — literal details in `raise` are the package's own user-facing pattern). Run: `just test` (`uv run pytest --cov`); pytest config and coverage live in `pyproject.toml`. **Coverage bar: `fail_under = 100`** (branch coverage on). Test-writing rules are introduced incrementally by the user — check recent test files for the current style before writing new ones.
+- ruff and ty are pinned exactly (`==`) in the `dev` dependency group; bump deliberately (`uv add --dev --bounds exact ty ruff`). Test tooling (`pytest`, `pytest-cov`, `httpx2` for `TestClient`, `anyio`, `typer` for the CLI tests) uses compatible-release pins (`~=`). The CLI itself is an optional `[project.optional-dependencies] cli` extra (`typer>=0.15`); the `fastapi-typed-errors` console script is `analysis.cli:main`.
+- Tests live in `tests/`, mirroring the package structure (`tests/core/test_base.py` ↔ `src/.../core/base.py`); the directory is not a package (per-file ignores for `tests/**`: INP001, S101, EM101, plus PLR2004 `magic-value-comparison` and PLC2701 `import-private-name` — tests compare to literal counts and exercise private internals). Non-`test_*` fixture modules (`tests/analysis/walker_helpers.py`, `cli_apps.py`) are importable helpers pytest does not collect; the CLI test `chdir`s into the test dir so the checker's `sys.path`-insert finds `cli_apps`. Run: `just test` (`uv run pytest --cov`); pytest config and coverage live in `pyproject.toml`. **Coverage bar: `fail_under = 100`** (branch coverage on). Test-writing rules are introduced incrementally by the user — check recent test files for the current style before writing new ones.
 - Async tests are plain `async def` — the anyio pytest plugin picks them up via `tests/conftest.py` (an `anyio_backend` fixture + a `pytest_collection_modifyitems` hook auto-marking coroutine tests; anyio has no pytest-asyncio-style "auto" mode).
 - Registration-only stub endpoints in tests end with `raise NotImplementedError` (ty `all = "error"` rejects `...` bodies with non-`None` return annotations outside stubs/protocols).
 - Test structure: **AAA** (Arrange / Act / Assert), the blocks separated by blank lines; single-expression tests may collapse to one line (e.g. `assert error_models(X) is X.model`). Every test opens with a short one-line docstring describing the case; test functions are annotated `-> None`.

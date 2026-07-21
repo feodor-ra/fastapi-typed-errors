@@ -11,9 +11,17 @@ license = "MIT"
 license-files = ["LICENSE"]
 keywords = ["fastapi", "errors", "openapi", "typed", "pydantic"]
 dependencies = [
-    "fastapi>=0.115",
+    # 0.137/0.138 introduced the lazy _IncludedRouter tree but not the supported
+    # iter_route_contexts iterator — nested includes cannot be walked there; skip that gap.
+    "fastapi>=0.115,!=0.137.*,!=0.138.*",
     "pydantic>=2.9",
 ]
+
+[project.optional-dependencies]
+cli = ["typer>=0.15"]
+
+[project.scripts]
+fastapi-typed-errors = "fastapi_typed_errors.analysis.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.30,<0.12.0"]
@@ -43,6 +51,8 @@ convention = "google"
     "assert",                     # S101: pytest is built on assert
     "implicit-namespace-package", # INP001: the tests directory is not a package
     "raw-string-in-exception",    # EM101: raising errors with a literal detail is the package's own user-facing pattern
+    "magic-value-comparison",     # PLR2004: comparing to literal counts/exit codes is normal in tests
+    "import-private-name",        # PLC2701: tests exercise the package's private internals
 ]
 
 [tool.ty.rules]
@@ -68,4 +78,5 @@ dev = [
     "pytest-cov~=7.1.0",
     "ruff==0.15.22",
     "ty==0.0.61",
+    "typer~=0.27.0",
 ]

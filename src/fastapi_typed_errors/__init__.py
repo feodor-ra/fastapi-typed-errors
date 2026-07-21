@@ -4,6 +4,7 @@ Literal error codes in OpenAPI, discriminated ``oneOf`` unions, and a single
 source of truth: the error class itself.
 """
 
+from .analysis import RaisesReport, RouteDiscrepancy, check_raises
 from .core import (
     BaseError,
     ErrorResponse,
@@ -16,6 +17,9 @@ __all__ = (
     "BaseError",
     "ErrorResponse",
     "Raises",
+    "RaisesReport",
+    "RouteDiscrepancy",
+    "check_raises",
     "error_models",
     "handle_base_error",
     "with_errors",
