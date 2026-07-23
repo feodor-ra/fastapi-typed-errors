@@ -1,141 +1,95 @@
 # fastapi-typed-errors
 
-Typed error responses for FastAPI: `Literal` error codes in OpenAPI, discriminated `oneOf` unions, and a single source of truth — the error class itself.
+**English** · [Русский](README.ru.md)
 
-> **Status: draft.** All three layers are implemented — `core`, the `with_errors` decorator (with `auto`-fill), and the layer-3 CI checker.
+![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green) [![Docs](https://img.shields.io/badge/docs-online-blueviolet)](https://feodor-ra.github.io/fastapi-typed-errors/)
 
-## Requirements
+**Typed HTTP errors for FastAPI** — exact `Literal` codes in OpenAPI, discriminated `oneOf` unions on the `code` field, and a single source of truth: the error class itself.
 
-- Python **3.12+** (PEP 695 generics)
-- FastAPI ≥ 0.115 (the lazy-routing gap `0.137`–`0.138` is excluded), Pydantic ≥ 2.9
-- The CI checker CLI needs the `cli` extra: `pip install 'fastapi-typed-errors[cli]'`
-
-## Quick start
-
-Declare errors once, right in the return annotation — `with_errors` fills `responses={}` for you:
+In plain FastAPI, `raise HTTPException(404, "...")` buries the error code in a string — clients can't switch on it, OpenAPI has no code type or body schema, and you hand-maintain `responses={}` on every route. This package makes an error a **class**: its HTTP status, machine-readable code and response model are declared once and derived automatically, so your error contract is typed, self-documenting, and verifiable in CI.
 
 ```python
-from enum import StrEnum
-from http import HTTPStatus
-from typing import Annotated, Literal
-
-from fastapi import APIRouter, FastAPI
-from pydantic import BaseModel
-
-from fastapi_typed_errors import BaseError, Raises, handle_base_error, with_errors
-
-
-class ErrorCode(StrEnum):
-    NOT_FOUND = "NOT_FOUND"
-    FORBIDDEN = "FORBIDDEN"
-
-
 class NotFoundError(BaseError[Literal[ErrorCode.NOT_FOUND]]):
     http_status = HTTPStatus.NOT_FOUND
-    description = "Requested entity does not exist"
 
 
-class ForbiddenError(BaseError[Literal[ErrorCode.FORBIDDEN]]):
-    http_status = HTTPStatus.FORBIDDEN
+@router.get("/items/{item_id}")
+def get_item(item_id: int) -> Annotated[Item, Raises[NotFoundError]]:
+    if item_id == 0:
+        raise NotFoundError("No item")
+    return Item(item_id=item_id)
+```
 
+The response body is always `{"code": "NOT_FOUND", "detail": "No item"}`, and OpenAPI gets a `404` with the **exact** `Literal["NOT_FOUND"]` code and body model — no manual `responses`.
 
-class Item(BaseModel):
-    item_id: int
+## Install
 
+```bash
+pip install fastapi-typed-errors          # core + decorator
+pip install "fastapi-typed-errors[cli]"   # + the CI-checker CLI
+```
+
+Requires Python **3.12+**, FastAPI **≥ 0.115**, Pydantic **≥ 2.9**.
+
+## How to use it
+
+**1. Define errors and register the one handler.**
+
+```python
+from fastapi import FastAPI
+from fastapi_typed_errors import BaseError, handle_base_error
 
 app = FastAPI()
 app.add_exception_handler(BaseError, handle_base_error)
+```
 
+**2. Declare errors — pick your level of magic:**
+
+```python
+# a) by hand (core only) — write responses yourself
+@app.get("/x", responses={404: {"model": error_models(NotFoundError)}})
+def a() -> Item: ...
+
+
+# b) declared — the marker fills responses for you
 router = with_errors(APIRouter())
 
 
-@router.get("/items/{item_id}")
-def get_item(item_id: int) -> Annotated[Item, Raises[NotFoundError, ForbiddenError]]:
-    if item_id == 0:
-        raise NotFoundError(f"No item {item_id}")
-    return Item(item_id=item_id)
+@router.get("/y")
+def b() -> Annotated[Item, Raises[NotFoundError, ForbiddenError]]: ...
 
 
-app.include_router(router)
-```
-
-The error response body is always:
-
-```json
-{"code": "NOT_FOUND", "detail": "No item 0"}
-```
-
-OpenAPI gets a `404` and a `403` entry with the **exact** `Literal` code each; several errors sharing one status become a discriminated `oneOf` union automatically. The success (`200`) schema stays clean — the `Raises` marker is invisible to pydantic.
-
-`with_errors(router)` returns the **same** `APIRouter` instance with its `add_api_route` patched on the instance, so object identity is preserved: `include_router`, websockets, imperative `add_api_route(...)` calls and app-level decorators all work natively. For an application, wrap its router: `with_errors(app.router)`.
-
-### Auto-fill
-
-Pass `with_errors(router, auto=True)` to drop the `Raises[...]` markers entirely: at registration each endpoint and its whole dependency tree are statically walked (the same walk the [CI checker](#ci-checker) uses), and the discovered errors fill `responses` automatically — merged with any markers you *do* write, and an explicit `responses={}` still wins per status.
-
-```python
+# c) automatic — no markers at all; errors are found statically
 router = with_errors(APIRouter(), auto=True)
 
 
-@router.get("/items/{item_id}")
-def get_item(item_id: int, user: Annotated[User, Depends(current_user)]) -> Item:
-    if item_id == 0:
-        raise NotFoundError(f"No item {item_id}")  # auto -> 404
-    return Item(item_id=item_id)  # + whatever current_user can raise
+@router.get("/z")
+def c(user: Annotated[User, Depends(current_user)]) -> Item:
+    raise NotFoundError("...")  # auto -> 404, plus whatever current_user raises
 ```
 
-## Core layer only
-
-The decorator layer is optional sugar — `responses={}` can always be filled by hand with `error_models()`:
+**3. Verify the contract in CI.** `check_raises` compares what each route *declares* against what it can actually *raise* — in the endpoint and its whole dependency tree:
 
 ```python
-@app.get(
-    "/items/{item_id}",
-    responses={
-        404: {"model": error_models(NotFoundError)},
-        403: {"model": error_models(ForbiddenError)},
-    },
-)
-def get_item(item_id: int) -> Item: ...
-```
-
-## CI checker
-
-`check_raises` statically compares what each route **declares** via `Raises[...]` against what it can actually **raise** — in the endpoint, its helpers and its whole dependency tree. It closes the gap that pure annotations leave open: a raise you forgot to declare, or a declaration you no longer raise.
-
-```python
-from fastapi_typed_errors import check_raises
-
-
 def test_error_contracts() -> None:
-    report = check_raises(app)  # a FastAPI app or an APIRouter
-    assert report.ok, report.routes
+    assert check_raises(app).ok
 ```
 
-`report.routes` lists each `RouteDiscrepancy` with two independent buckets: `undeclared` (raised in code, missing from `Raises` — always a failure) and `overdeclared` (declared but never found raised). Pass `allow_overdeclared=True` to ignore the second bucket for code whose raises the static walker cannot see.
+Or as a command: `fastapi-typed-errors check app.main:app` (exit `0`/`1`/`2`).
 
-The same check as a CLI (needs the `cli` extra), pointed at a `module:attribute` app path:
+## Why it's cool
 
-```console
-$ fastapi-typed-errors check app.main:app
-```
+- **Exact types in OpenAPI** — a precise `Literal` code per status; several errors on one status become a discriminated `oneOf` union, so Swagger UI shows a variant picker by code.
+- **Single source of truth** — status, code and model declared once; the metaclass derives the rest.
+- **Zero-boilerplate `responses`** — via the `Raises` marker or fully automatic `auto=True`.
+- **Static contract checking** — `check_raises` catches a raise you forgot to declare (or a dead declaration) before it ships.
+- **Non-invasive** — `with_errors` patches the router in place and preserves object identity, so `include_router`, websockets and app-level decorators keep working natively.
+- **Rigorous** — fully typed (`py.typed`), 100% branch-covered, checked with `ruff` + `ty` at max strictness.
 
-Exit codes: `0` all declarations match, `1` discrepancies (rendered as a table), `2` a usage/loading error. Flags: `--allow-overdeclared`, `--max-depth`.
+## Documentation
 
-The walker follows the `get_or_404(error=NotFoundError)` factory pattern (error classes passed as call arguments), closures, cross-module helpers and `functools.partial`; it stays within one process and never executes your code. Out of scope (documented false-negatives, so `overdeclared` stays a failure by default): errors raised through local-variable indirection, `self.method()` chains, dynamic dispatch, and bare `AsyncIterator` stream endpoints.
+📖 **[Full documentation](https://feodor-ra.github.io/fastapi-typed-errors/)** — guide, customization (custom envelopes, `ABC`, bare-string codes), limitations, and an auto-generated API reference. Available in English and Russian.
 
-## Notes
+## License
 
-- Error codes are any `StrEnum` members you bring, or plain strings: `BaseError[Literal["NOT_FOUND"]]`.
-- Wrap **before** registering: routes added to the router before `with_errors(router)` are not retrofitted.
-- An explicit `responses={<status>: ...}` on the route wins wholesale over `Raises`-derived entries for the same status. Use `int` status keys.
-- Shared error tuples work in both spellings: `Raises[*TOKEN_ERRORS]` and `Raises(*TOKEN_ERRORS)`.
-- Markers are found through PEP 695 `type` aliases, nested `Annotated` bases and union arms (`Annotated[Item, Raises[...]] | None`) — a declared `Raises` is never dropped silently.
-- Unresolvable return annotations without `Raises` (the `if TYPE_CHECKING:` import pattern) pass through untouched, exactly like stock FastAPI; with `Raises` mentioned they fail fast with a clear `TypeError`.
-- `-> Annotated[Response subclass, Raises[...]]` and `-> Annotated[None, Raises[...]]` are normalized to `response_model=None`, restoring stock FastAPI semantics for raw-response and empty routes.
-- Bare stream returns (`-> Annotated[AsyncIterator[X], Raises[...]]`, the SSE/JSONL feature) are not supported — annotate a `Response` subclass instead.
-- `Raises` metadata on a router that was **not** passed through `with_errors` is inert — nothing is injected and nothing fails; the [CI checker](#ci-checker) reads annotations directly, so it still catches such drift.
-- Status descriptions come from each error's `description`; several errors on one status get their descriptions joined with `;`, and the HTTP status phrase is the fallback.
-- Customize the response body by overriding `response_base` with your own generic subclass of `ErrorResponse` — extra fields are added alongside `code`/`detail` (e.g. `status: Literal["error"] = "error"`). The shape must stay **flat**: nested envelopes like `{"status": ..., "data": {"code": ...}}` are not supported, because pydantic discriminated unions require the `code` discriminator at the top level of the model.
-- `BaseError` subclasses `fastapi.HTTPException`; mixing it with `ABC` and other custom-metaclass bases raises a metaclass conflict. The metaclass is public for exactly this case — build a combined one: `class Meta(BaseErrorMeta, ABCMeta): ...` (`from fastapi_typed_errors.core.base import BaseErrorMeta`; deliberately not re-exported from the package root).
-- The handler is registered explicitly — the same way you call `app.add_middleware(...)`; the package does not touch your app behind your back. `handle_base_error` is typed `(Request, Exception)` to match Starlette's handler contract, so the registration line stays clean under every type checker; registering it for a non-`BaseError` exception type fails fast with a `TypeError` at runtime.
+[MIT](LICENSE).
