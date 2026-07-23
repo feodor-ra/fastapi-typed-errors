@@ -81,7 +81,7 @@ router = with_errors(APIRouter(), auto=True)
 def get_item(item_id: int, user: Annotated[User, Depends(current_user)]) -> Item:
     if item_id == 0:
         raise NotFoundError(f"No item {item_id}")  # auto -> 404
-    return Item(item_id=item_id)                    # + whatever current_user can raise
+    return Item(item_id=item_id)  # + whatever current_user can raise
 ```
 
 ## Core layer only

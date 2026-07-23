@@ -11,3 +11,11 @@ lint:
 # Run the test suite with coverage.
 test:
     uv run pytest --cov
+
+# Serve the documentation site locally with live reload.
+docs:
+    uv run --group docs mkdocs serve
+
+# Build the documentation site in strict mode.
+docs-build:
+    uv run --group docs mkdocs build --strict

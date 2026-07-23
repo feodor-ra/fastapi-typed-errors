@@ -12,3 +12,7 @@ wheels/
 # Test artifacts
 .coverage
 .pytest_cache/
+
+# Docs build
+site/
+.cache/

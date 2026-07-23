@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="560" viewBox="0 0 820 560" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#0b1220" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <!-- card -->
+  <rect x="10" y="10" width="800" height="540" rx="10" fill="#ffffff" stroke="#e4e8ee"/>
+  <g filter="url(#shadow)"><rect x="10" y="10" width="800" height="540" rx="10" fill="none"/></g>
+
+  <!-- operation header -->
+  <rect x="30" y="30" width="60" height="30" rx="4" fill="#61affe"/>
+  <text x="60" y="50" fill="#ffffff" font-size="14" font-weight="700" text-anchor="middle">GET</text>
+  <text x="104" y="51" fill="#3b4151" font-size="17" font-family="'SF Mono', Menlo, Consolas, monospace">/items/{item_id}</text>
+  <text x="782" y="51" fill="#9aa3b0" font-size="13" text-anchor="end">get_item</text>
+
+  <line x1="30" y1="78" x2="790" y2="78" stroke="#eceff3"/>
+
+  <!-- Responses -->
+  <text x="30" y="108" fill="#3b4151" font-size="17" font-weight="700">Responses</text>
+
+  <!-- table header -->
+  <text x="30" y="140" fill="#8a94a6" font-size="12" font-weight="700" letter-spacing="0.4">CODE</text>
+  <text x="120" y="140" fill="#8a94a6" font-size="12" font-weight="700" letter-spacing="0.4">DESCRIPTION</text>
+  <line x1="30" y1="150" x2="790" y2="150" stroke="#eceff3"/>
+
+  <!-- 200 -->
+  <text x="30" y="180" fill="#49a56c" font-size="16" font-weight="700" font-family="'SF Mono', Menlo, Consolas, monospace">200</text>
+  <text x="120" y="176" fill="#3b4151" font-size="14">Successful Response</text>
+  <rect x="120" y="188" width="66" height="22" rx="4" fill="#f2f7ff" stroke="#cfe0fb"/>
+  <text x="153" y="203" fill="#3b6cc6" font-size="12" font-family="'SF Mono', Menlo, Consolas, monospace" text-anchor="middle">Item</text>
+  <line x1="30" y1="228" x2="790" y2="228" stroke="#f1f3f6"/>
+
+  <!-- 403 -->
+  <text x="30" y="258" fill="#c15b5b" font-size="16" font-weight="700" font-family="'SF Mono', Menlo, Consolas, monospace">403</text>
+  <text x="120" y="254" fill="#3b4151" font-size="14">Insufficient permissions</text>
+  <rect x="120" y="266" width="196" height="22" rx="4" fill="#fdf2f2" stroke="#f5cccc"/>
+  <text x="218" y="281" fill="#b04a4a" font-size="12" font-family="'SF Mono', Menlo, Consolas, monospace" text-anchor="middle">ErrorResponse[FORBIDDEN]</text>
+  <line x1="30" y1="306" x2="790" y2="306" stroke="#f1f3f6"/>
+
+  <!-- 404 (expanded) -->
+  <text x="30" y="336" fill="#c15b5b" font-size="16" font-weight="700" font-family="'SF Mono', Menlo, Consolas, monospace">404</text>
+  <text x="120" y="332" fill="#3b4151" font-size="14">Entity not found; Gone forever</text>
+
+  <!-- expanded schema panel -->
+  <rect x="120" y="348" width="670" height="184" rx="8" fill="#f8fafc" stroke="#e6ebf1"/>
+
+  <text x="140" y="374" fill="#8a94a6" font-size="12" font-weight="700" letter-spacing="0.4">MEDIA TYPE</text>
+  <text x="250" y="374" fill="#3b4151" font-size="13" font-family="'SF Mono', Menlo, Consolas, monospace">application/json</text>
+
+  <text x="140" y="402" fill="#3b4151" font-size="13" font-family="'SF Mono', Menlo, Consolas, monospace"><tspan fill="#8a94a6">oneOf</tspan> — by <tspan fill="#7a3fb8" font-weight="700">code</tspan> (discriminator)</text>
+
+  <!-- variant chips -->
+  <rect x="140" y="414" width="196" height="22" rx="4" fill="#eef2f8" stroke="#dbe3ee"/>
+  <text x="238" y="429" fill="#3b6cc6" font-size="12" font-family="'SF Mono', Menlo, Consolas, monospace" text-anchor="middle">ErrorResponse[NOT_FOUND]</text>
+  <rect x="346" y="414" width="150" height="22" rx="4" fill="#eef2f8" stroke="#dbe3ee"/>
+  <text x="421" y="429" fill="#3b6cc6" font-size="12" font-family="'SF Mono', Menlo, Consolas, monospace" text-anchor="middle">ErrorResponse[GONE]</text>
+
+  <!-- model tree for NOT_FOUND -->
+  <text x="140" y="462" fill="#3b4151" font-size="13" font-family="'SF Mono', Menlo, Consolas, monospace">{</text>
+  <text x="158" y="484" font-size="13" font-family="'SF Mono', Menlo, Consolas, monospace"><tspan fill="#3b4151">code</tspan><tspan fill="#f93e3e">*</tspan><tspan fill="#8a94a6">   string</tspan><tspan fill="#49a56c">  enum: [ "NOT_FOUND" ]</tspan></text>
+  <text x="158" y="506" font-size="13" font-family="'SF Mono', Menlo, Consolas, monospace"><tspan fill="#3b4151">detail</tspan><tspan fill="#f93e3e">*</tspan><tspan fill="#8a94a6"> string</tspan></text>
+  <text x="140" y="528" fill="#3b4151" font-size="13" font-family="'SF Mono', Menlo, Consolas, monospace">}</text>
+</svg>

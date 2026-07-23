@@ -1,0 +1,127 @@
+site_name: fastapi-typed-errors
+site_description: Typed HTTP errors for FastAPI — exact Literal codes in OpenAPI, discriminated oneOf unions, a single source of truth.
+site_url: https://feodor-ra.github.io/fastapi-typed-errors/
+repo_url: https://github.com/feodor-ra/fastapi-typed-errors
+repo_name: feodor-ra/fastapi-typed-errors
+edit_uri: edit/main/docs/
+copyright: MIT License
+
+extra_css:
+  - stylesheets/extra.css
+
+theme:
+  name: material
+  icon:
+    logo: material/alert-decagram-outline
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search:
+      lang:
+        - en
+        - ru
+  - i18n:
+      docs_structure: folder
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: ru
+          name: Русский
+          build: true
+          nav_translations:
+            Overview: Обзор
+            Guide: Руководство
+            API Reference: Справочник API
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            docstring_section_style: table
+            separate_signature: true
+            signature_crossrefs: true
+            show_signature_annotations: true
+            merge_init_into_class: true
+            show_source: false
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            filters:
+              - "!^_"
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/feodor-ra/fastapi-typed-errors
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/fastapi-typed-errors/
+
+nav:
+  - Overview:
+      - index.md
+      - quickstart.md
+  - Guide:
+      - guide/core.md
+      - guide/decorator.md
+      - guide/checker.md
+      - guide/customization.md
+      - guide/recipes.md
+      - guide/limitations.md
+  - API Reference:
+      - reference/core.md
+      - reference/decorator.md
+      - reference/analysis.md
