@@ -2,7 +2,7 @@
 
 Typed error responses for FastAPI: `Literal` error codes in OpenAPI, discriminated `oneOf` unions, and a single source of truth — the error class itself.
 
-> **Status: draft.** Layers 1 (`core`), 2 (`decorator`) and the layer-3 CI checker are implemented; the analysis `auto`-fill mode is coming.
+> **Status: draft.** All three layers are implemented — `core`, the `with_errors` decorator (with `auto`-fill), and the layer-3 CI checker.
 
 ## Requirements
 
@@ -68,6 +68,21 @@ The error response body is always:
 OpenAPI gets a `404` and a `403` entry with the **exact** `Literal` code each; several errors sharing one status become a discriminated `oneOf` union automatically. The success (`200`) schema stays clean — the `Raises` marker is invisible to pydantic.
 
 `with_errors(router)` returns the **same** `APIRouter` instance with its `add_api_route` patched on the instance, so object identity is preserved: `include_router`, websockets, imperative `add_api_route(...)` calls and app-level decorators all work natively. For an application, wrap its router: `with_errors(app.router)`.
+
+### Auto-fill
+
+Pass `with_errors(router, auto=True)` to drop the `Raises[...]` markers entirely: at registration each endpoint and its whole dependency tree are statically walked (the same walk the [CI checker](#ci-checker) uses), and the discovered errors fill `responses` automatically — merged with any markers you *do* write, and an explicit `responses={}` still wins per status.
+
+```python
+router = with_errors(APIRouter(), auto=True)
+
+
+@router.get("/items/{item_id}")
+def get_item(item_id: int, user: Annotated[User, Depends(current_user)]) -> Item:
+    if item_id == 0:
+        raise NotFoundError(f"No item {item_id}")  # auto -> 404
+    return Item(item_id=item_id)                    # + whatever current_user can raise
+```
 
 ## Core layer only
 

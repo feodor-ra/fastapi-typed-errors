@@ -6,7 +6,7 @@ Public PyPI package: typed HTTP errors for FastAPI — exact `Literal` error cod
 
 ## Status
 
-Draft. The `core` and `decorator` layers plus the layer-3 CI checker are implemented (the analysis `auto`-fill mode is not yet). Linters/type checker and pytest are configured (see Conventions); the whole package is at 100% branch coverage. Licensed under MIT (`LICENSE` + PEP 639 metadata in `pyproject.toml`).
+Draft. All three layers are implemented — `core`, the `with_errors` decorator (with `auto`-fill), and the layer-3 analysis (CI checker `check_raises` + CLI). Linters/type checker and pytest are configured (see Conventions); the whole package is at 100% branch coverage. Licensed under MIT (`LICENSE` + PEP 639 metadata in `pyproject.toml`).
 
 ## Architecture — three independent layers
 
@@ -14,7 +14,7 @@ Each layer is usable without the next one:
 
 1. **`core`** (done) — `BaseError`, the `BaseErrorMeta` metaclass, `ErrorResponse`, `error_models()`, `handle_base_error`.
 2. **`decorator`** (done) — `with_errors(router)` + `Raises[...]` in the return annotation (Annotated syntax). An instance patch of `add_api_route` as the single interception point; subclassing `APIRouter` AND a wrapper object were both rejected (see decorator-layer decisions).
-3. **`analysis`** (CI checker done; `auto` planned) — AST walk over `raise` statements. `check_raises()` compares declared `Raises[...]` against errors actually raised (endpoint + helpers + dependency tree); a typer CLI (`cli` extra) wraps it. `auto=True` (auto-populating `responses` from the same walk) is the remaining piece. Design inspired by fastapi-docx (MIT), whose flaws are deliberately not inherited (see analysis-layer decisions).
+3. **`analysis`** (done) — AST walk over `raise` statements. `check_raises()` compares declared `Raises[...]` against errors actually raised (endpoint + helpers + dependency tree); a typer CLI (`cli` extra) wraps it. `with_errors(router, auto=True)` reuses the same walk to auto-populate `responses` at registration. Design inspired by fastapi-docx (MIT), whose flaws are deliberately not inherited (see analysis-layer decisions).
 
 ## Layout
 
@@ -70,7 +70,9 @@ src-layout, package `src/fastapi_typed_errors/`:
 - `_BodyVisitor` descends into statement bodies only (skips annotations/decorators/defaults), so a route's own `Raises[...]` return annotation is not counted, and local nested `def`s ARE walked. Catches `raise X`, `raise X(...)`, `raise ... from e`. **Argument heuristic**: an error class passed as a call argument counts as potentially raised (the `get_or_404(error=X)` pattern) — carve-out for `isinstance`/`issubclass`. Over-approximation is safe for CI (surfaces as `undeclared`); documented false-negatives (locals, `self.*`, dynamic dispatch, bare streams) keep `overdeclared` a failure by default.
 - Two discrepancy buckets, reported separately: `undeclared` (always a failure), `overdeclared` (failure by default; `allow_overdeclared=True` strips it at report-build time). `RaisesReport.ok` = `not routes`; no `__bool__` (ambiguous).
 - CLI split: `cli.py::main()` is the console-script entry with **no top-level `typer` import** (degrades to exit 2 + install hint without the `cli` extra); `_cli.py` holds the typer app (module-level `typer.Typer()`, needs the extra). A `@cli.callback()` forces `check` to be a named subcommand (a single typer command would otherwise collapse and swallow the app-path argument). Exit codes: 0 ok, 1 discrepancies, 2 usage/loading.
-- `collect_raised`/`_scan` are the reuse point for the future `auto=True`.
+- `collect_raised`/`_scan` are the shared engine for both `check_raises` and `with_errors(auto=True)`.
+- **`auto=True`** (user decision 2026-07-23): scope = endpoint + full dependency tree (matches `check_raises`); the discovered set is **unioned** with any `Raises[...]` markers, and an explicit `responses={}` still wins per status. Injected in `wrapper` before delegating (mutating `route.responses` after build silently drops the schema — `response_fields` are frozen at build; verified). The dependency tree is rebuilt at registration (the route does not exist yet) via public `fastapi.dependencies.utils.get_dependant` + `get_parameterless_sub_dependant`, folding router-level + route-level `dependencies=[...]` (mirror `_build_dependant_with_parameterless_dependencies`); `path` is irrelevant (only path-param detection). `auto` is captured in the wrapper closure — first-`with_errors`-call wins (idempotent re-wrap does not change it).
+- Import layering for `auto`: `decorator.wrapper` cannot import `analysis` at module level (analysis already imports wrapper → cycle). So `collect_raised` is **lazy-imported** inside `_auto_raised`, and `get_dependant`/`get_parameterless_sub_dependant` are lazy-imported in a `try/except ImportError` → graceful degradation to endpoint-only if FastAPI moves them (tested by `delattr`-ing `get_parameterless_sub_dependant`, which fails only our combined import, not FastAPI's own bindings). `_dependency_calls`/`_is_security_scheme` live in `decorator.wrapper` (the shared lower layer both use) and are imported by `analysis.checker`.
 
 ## Conventions
 

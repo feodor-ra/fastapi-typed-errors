@@ -1,7 +1,5 @@
 """CI checker: compare declared ``Raises`` against the errors found in code."""
 
-import functools
-import inspect
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
@@ -10,10 +8,14 @@ import fastapi.routing
 from fastapi import APIRouter, FastAPI
 from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
-from fastapi.security.base import SecurityBase
 
 from ..core.base import BaseError
-from ..decorator.wrapper import _find_raises, _return_annotation, _unwrap_endpoint
+from ..decorator.wrapper import (
+    _dependency_calls,
+    _find_raises,
+    _return_annotation,
+    _unwrap_endpoint,
+)
 from .visitor import _collect, _ScanCache
 
 
@@ -162,37 +164,6 @@ def _raised(route: _RouteLike, *, max_depth: int, cache: _ScanCache) -> frozense
     for call in _dependency_calls(route.dependant):
         raised |= _collect(call, max_depth=max_depth, cache=cache)
     return frozenset(raised)
-
-
-def _dependency_calls(dependant: Dependant) -> Iterator[Callable[..., Any]]:
-    """Yield every dependency callable in the tree, skipping security schemes.
-
-    Args:
-        dependant: The route's dependency tree root.
-
-    Yields:
-        Callable[..., Any]: Each sub-dependency's callable.
-    """
-    for sub in dependant.dependencies:
-        if sub.call is not None and not _is_security_scheme(sub.call):
-            yield sub.call
-        yield from _dependency_calls(sub)
-
-
-def _is_security_scheme(call: Callable[..., Any]) -> bool:
-    """Report whether a dependency callable is a security scheme.
-
-    Args:
-        call: The dependency callable.
-
-    Returns:
-        bool: ``True`` for ``SecurityBase`` instances (they raise stock
-            ``HTTPException``, never ``BaseError``).
-    """
-    unwrapped = call
-    while isinstance(unwrapped, functools.partial):
-        unwrapped = unwrapped.func
-    return isinstance(inspect.unwrap(unwrapped), SecurityBase)
 
 
 def _sorted(errors: frozenset[type[BaseError[Any]]]) -> tuple[type[BaseError[Any]], ...]:

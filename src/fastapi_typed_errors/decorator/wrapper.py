@@ -2,13 +2,16 @@
 
 import functools
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
 from http import HTTPStatus
 from types import UnionType
 from typing import Annotated, Any, Final, TypeAliasType, Union, cast, get_args, get_origin, get_type_hints
 
 from fastapi import APIRouter, Response
 from fastapi.datastructures import DefaultPlaceholder
+from fastapi.dependencies.models import Dependant
+from fastapi.params import Depends
+from fastapi.security.base import SecurityBase
 
 from ..core.base import BaseError
 from ..core.models import error_models
@@ -17,7 +20,7 @@ from .raises import Raises
 _ALREADY_WRAPPED: Final[str] = "_fastapi_typed_errors_wrapped"
 
 
-def with_errors[R: APIRouter](router: R, /) -> R:
+def with_errors[R: APIRouter](router: R, /, *, auto: bool = False) -> R:
     """Enable ``Raises`` handling on the router and return the same router.
 
     The router's ``add_api_route`` is replaced (on the instance) with a wrapper
@@ -30,28 +33,34 @@ def with_errors[R: APIRouter](router: R, /) -> R:
     patch. Idempotent: wrapping twice is a no-op.
 
     For an application, wrap its router: ``with_errors(app.router)``.
-    Future options will be keyword-only (e.g. ``with_errors(router, auto=...)``).
 
     Args:
         router: The router to enable ``Raises`` handling on.
+        auto: When ``True``, also fill ``responses`` from errors discovered by
+            statically walking each endpoint and its whole dependency tree — no
+            ``Raises[...]`` needed; discovered errors are merged with any that
+            are declared. Set it on the first ``with_errors`` call; because
+            wrapping is idempotent, a later call does not change it.
 
     Returns:
         R: The same router instance, for chaining and assignment.
     """
     if not getattr(router.add_api_route, _ALREADY_WRAPPED, False):
-        router.add_api_route = _wrap_add_api_route(router.add_api_route)  # ty: ignore[invalid-assignment]
+        router.add_api_route = _wrap_add_api_route(router.add_api_route, router, auto=auto)  # ty: ignore[invalid-assignment]
     return router
 
 
-def _wrap_add_api_route[**P, R](add_api_route: Callable[P, R], /) -> Callable[P, R]:
+def _wrap_add_api_route[**P, R](add_api_route: Callable[P, R], router: APIRouter, /, *, auto: bool) -> Callable[P, R]:
     """Build the ``add_api_route`` replacement enriching ``responses`` from ``Raises``.
 
     The wrapper only manipulates call arguments and delegates: without markers
-    the call passes through byte-for-byte, so FastAPI's ``DefaultPlaceholder``
-    sentinels and inference behavior stay intact.
+    (and without ``auto``) the call passes through byte-for-byte, so FastAPI's
+    ``DefaultPlaceholder`` sentinels and inference behavior stay intact.
 
     Args:
         add_api_route: The original bound ``APIRouter.add_api_route``.
+        router: The wrapped router (its ``dependencies`` feed the ``auto`` walk).
+        auto: Whether to also derive errors from the endpoint and dependencies.
 
     Returns:
         Callable[P, R]: The replacement, preserving the original signature.
@@ -65,13 +74,15 @@ def _wrap_add_api_route[**P, R](add_api_route: Callable[P, R], /) -> Callable[P,
             # Let the original signature produce the natural error.
             return add_api_route(*args, **kwargs)
         annotation = _return_annotation(_unwrap_endpoint(endpoint), path)
-        markers = _find_raises(annotation)
-        if markers:
+        errors = dict.fromkeys(error for marker in _find_raises(annotation) for error in marker.errors)
+        if auto:
+            route_dependencies = cast(Sequence[Depends] | None, kwargs.get("dependencies"))
+            errors = dict.fromkeys([*errors, *_auto_raised(endpoint, path, route_dependencies, router)])
+        if errors:
             # Mutating P.kwargs violates the ParamSpec guarantee formally, but the keys
             # belong to the wrapped signature — localize the lie in one cast alias.
             raw_kwargs = cast(dict[str, Any], kwargs)
-            errors = tuple(dict.fromkeys(error for marker in markers for error in marker.errors))
-            raw_kwargs["responses"] = {**_build_responses(errors), **(raw_kwargs.get("responses") or {})}
+            raw_kwargs["responses"] = {**_build_responses(tuple(errors)), **(raw_kwargs.get("responses") or {})}
             if (model := raw_kwargs.get("response_model")) is None or isinstance(model, DefaultPlaceholder):
                 base = _annotated_base(annotation)
                 if base is type(None) or (isinstance(base, type) and issubclass(base, Response)):
@@ -219,3 +230,79 @@ def _build_responses(errors: tuple[type[BaseError[Any]], ...]) -> dict[int | str
             "description": "; ".join(descriptions) or HTTPStatus(status).phrase,
         }
     return responses
+
+
+def _auto_raised(
+    endpoint: Callable[..., Any],
+    path: object,
+    route_dependencies: Sequence[Depends] | None,
+    router: APIRouter,
+) -> frozenset[type[BaseError[Any]]]:
+    """Discover the errors an endpoint and its dependency tree can raise.
+
+    Walks the endpoint's source with the analysis layer's ``collect_raised``
+    and does the same for every dependency callable, rebuilding the ``Dependant``
+    tree at registration time (the route does not exist yet). ``collect_raised``
+    is imported lazily to break the ``decorator`` ↔ ``analysis`` import cycle;
+    if FastAPI's dependency helpers move, the walk degrades to the endpoint only.
+
+    Args:
+        endpoint: The endpoint callable being registered.
+        path: The route path (only used for FastAPI's path-param detection,
+            irrelevant to which dependencies are found).
+        route_dependencies: The route-level ``dependencies=[Depends(...)]``.
+        router: The router (its router-level ``dependencies`` are folded in).
+
+    Returns:
+        frozenset[type[BaseError[Any]]]: Every ``BaseError`` subclass found.
+    """
+    from ..analysis.visitor import collect_raised  # ruff:ignore[import-outside-top-level] — breaks the import cycle
+
+    raised = set(collect_raised(endpoint))
+    try:
+        from fastapi.dependencies.utils import (  # ruff:ignore[import-outside-top-level] — enables the fallback below
+            get_dependant,
+            get_parameterless_sub_dependant,
+        )
+    except ImportError:
+        return frozenset(raised)
+    path_str = cast("str", path)
+    dependant = get_dependant(path=path_str, call=endpoint)
+    for depends in reversed([*router.dependencies, *(route_dependencies or [])]):
+        dependant.dependencies.insert(0, get_parameterless_sub_dependant(depends=depends, path=path_str))
+    for call in _dependency_calls(dependant):
+        raised |= collect_raised(call)
+    return frozenset(raised)
+
+
+def _dependency_calls(dependant: Dependant) -> Iterator[Callable[..., Any]]:
+    """Yield every dependency callable in the tree, skipping security schemes.
+
+    Shared with the analysis checker (which imports it from here).
+
+    Args:
+        dependant: The dependency tree root.
+
+    Yields:
+        Callable[..., Any]: Each sub-dependency's callable.
+    """
+    for sub in dependant.dependencies:
+        if sub.call is not None and not _is_security_scheme(sub.call):
+            yield sub.call
+        yield from _dependency_calls(sub)
+
+
+def _is_security_scheme(call: Callable[..., Any]) -> bool:
+    """Report whether a dependency callable is a security scheme.
+
+    Args:
+        call: The dependency callable.
+
+    Returns:
+        bool: ``True`` for ``SecurityBase`` instances (they raise stock
+            ``HTTPException``, never ``BaseError``).
+    """
+    unwrapped = call
+    while isinstance(unwrapped, functools.partial):
+        unwrapped = unwrapped.func
+    return isinstance(inspect.unwrap(unwrapped), SecurityBase)

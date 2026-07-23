@@ -6,9 +6,11 @@ from enum import StrEnum
 from http import HTTPStatus
 from typing import Annotated, Any, Literal, cast
 
+import fastapi.dependencies.utils
 import pytest
-from fastapi import APIRouter, FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, FastAPI
+from fastapi.responses import Response, StreamingResponse
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -72,6 +74,18 @@ def conflicting(q: int = 1) -> Annotated[Item, Raises[ConflictError]]:
     return Item(item_id=q)
 
 
+oauth = OAuth2PasswordBearer(tokenUrl="token")
+
+
+def raise_forbidden_dep() -> None:
+    """Dependency that raises, walked by ``auto``.
+
+    Raises:
+        ForbiddenError: Always.
+    """
+    raise ForbiddenError("dep")
+
+
 @pytest.fixture
 def router() -> APIRouter:
     """Router with ``Raises`` handling enabled.
@@ -80,6 +94,16 @@ def router() -> APIRouter:
         APIRouter: A fresh wrapped router.
     """
     return with_errors(APIRouter())
+
+
+@pytest.fixture
+def auto_router() -> APIRouter:
+    """Router with automatic error discovery enabled.
+
+    Returns:
+        APIRouter: A fresh router wrapped with ``auto=True``.
+    """
+    return with_errors(APIRouter(), auto=True)
 
 
 def _responses(router: APIRouter, path: str, method: str = "get") -> dict[str, Any]:
@@ -413,3 +437,136 @@ def test_included_wrapped_router_serves_requests(router: APIRouter) -> None:
     app.include_router(router)
 
     assert TestClient(app).get("/ping").json() == {"item_id": 1}
+
+
+def test_auto_injects_endpoint_raise(auto_router: APIRouter) -> None:
+    """``auto`` derives responses from the endpoint body without a marker."""
+
+    @auto_router.get("/items")
+    def endpoint() -> Item:
+        raise NotFoundError("x")
+
+    responses = _responses(auto_router, "/items")
+
+    assert responses["404"]["description"] == "Entity does not exist"
+    assert responses["200"]["content"]["application/json"]["schema"]["$ref"].endswith("Item")
+
+
+def test_auto_injects_parameter_dependency_raise(auto_router: APIRouter) -> None:
+    """``auto`` walks a signature dependency and injects its raise."""
+
+    @auto_router.get("/dep")
+    def endpoint(_: Annotated[None, Depends(raise_forbidden_dep)]) -> Item:
+        return Item(item_id=1)
+
+    assert "403" in _responses(auto_router, "/dep")
+
+
+def test_auto_injects_route_level_dependency_raise(auto_router: APIRouter) -> None:
+    """``auto`` folds in route-level ``dependencies=[...]`` and injects their raise."""
+
+    @auto_router.get("/route-dep", dependencies=[Depends(raise_forbidden_dep)])
+    def endpoint() -> Item:
+        return Item(item_id=1)
+
+    assert "403" in _responses(auto_router, "/route-dep")
+
+
+def test_auto_injects_router_level_dependency_raise() -> None:
+    """``auto`` folds in router-level ``dependencies=[...]`` and injects their raise."""
+    router = with_errors(APIRouter(dependencies=[Depends(raise_forbidden_dep)]), auto=True)
+
+    @router.get("/router-dep")
+    def endpoint() -> Item:
+        return Item(item_id=1)
+
+    assert "403" in _responses(router, "/router-dep")
+
+
+def test_auto_merges_with_markers(auto_router: APIRouter) -> None:
+    """``auto`` discovery is unioned with declared ``Raises[...]`` markers."""
+
+    @auto_router.get("/mix")
+    def endpoint() -> Annotated[Item, Raises[ConflictError]]:
+        raise NotFoundError("x")
+
+    responses = _responses(auto_router, "/mix")
+
+    assert "404" in responses
+    assert "409" in responses
+
+
+def test_auto_explicit_responses_win(auto_router: APIRouter) -> None:
+    """An explicit per-status ``responses`` entry beats an auto-derived one."""
+
+    @auto_router.get("/override", responses={404: {"description": "Manual"}})
+    def endpoint() -> Item:
+        raise NotFoundError("x")
+
+    assert _responses(auto_router, "/override")["404"]["description"] == "Manual"
+
+
+def test_auto_security_scheme_skipped(auto_router: APIRouter) -> None:
+    """A security-scheme dependency is skipped; the endpoint raise is still found."""
+
+    @auto_router.get("/secured")
+    def endpoint(_: Annotated[str, Depends(oauth)]) -> Item:
+        raise NotFoundError("x")
+
+    responses = _responses(auto_router, "/secured")
+
+    assert "404" in responses
+    assert "401" not in responses
+
+
+def test_auto_without_errors_passes_through(auto_router: APIRouter) -> None:
+    """``auto`` on an endpoint that raises nothing injects nothing."""
+
+    @auto_router.get("/quiet")
+    def endpoint() -> Item:
+        return Item(item_id=1)
+
+    assert "404" not in _responses(auto_router, "/quiet")
+
+
+def test_auto_normalizes_response_return(auto_router: APIRouter) -> None:
+    """``auto`` on a ``Response``-returning endpoint normalizes ``response_model``."""
+
+    @auto_router.get("/stream")
+    def endpoint() -> Response:
+        raise NotFoundError("x")
+
+    responses = _responses(auto_router, "/stream")
+
+    assert "404" in responses
+    assert responses["200"]["content"]["application/json"]["schema"] == {}
+
+
+def test_auto_falls_back_without_dependency_helper(
+    auto_router: APIRouter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If FastAPI's dependency helpers move, ``auto`` degrades to the endpoint only."""
+    # Removing this name fails only our lazy import; FastAPI's routing holds its own binding.
+    monkeypatch.delattr(fastapi.dependencies.utils, "get_parameterless_sub_dependant")
+
+    @auto_router.get("/fallback")
+    def endpoint(_: Annotated[None, Depends(raise_forbidden_dep)]) -> Item:
+        raise NotFoundError("x")
+
+    responses = _responses(auto_router, "/fallback")
+
+    assert "404" in responses
+    assert "403" not in responses
+
+
+def test_auto_is_first_wins_idempotent() -> None:
+    """A later ``with_errors`` call does not change the first call's ``auto``."""
+    router = with_errors(APIRouter())
+    with_errors(router, auto=True)
+
+    @router.get("/late")
+    def endpoint() -> Item:
+        raise NotFoundError("x")
+
+    assert "404" not in _responses(router, "/late")
