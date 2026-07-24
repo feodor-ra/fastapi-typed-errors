@@ -1,0 +1,15 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "fastapi-typed-errors",
+  "description": "Typed HTTP errors for FastAPI: exact Literal error codes and discriminated oneOf unions on the code field in OpenAPI, from a single source of truth — the error class.",
+  "folders": ["docs/en"],
+  "excludeFolders": ["docs/en/assets", "docs/en/reference"],
+  "rules": [
+    "Requires Python >= 3.12 and fastapi >=0.115,!=0.137.*,!=0.138.*, pydantic >= 2.9.",
+    "Define an error by subclassing BaseError parametrized with a StrEnum member or a bare Literal code, e.g. `class NotFoundError(BaseError[Literal[Code.NOT_FOUND]]): http_status = HTTPStatus.NOT_FOUND`.",
+    "Wire the handler explicitly the FastAPI way: `app.add_exception_handler(BaseError, handle_base_error)`. There is no install() helper.",
+    "Declare an endpoint's errors with Raises[...] inside the return annotation — `-> Annotated[Item, Raises[NotFoundError]]` — after wrapping the router: `router = with_errors(router)`.",
+    "Use `with_errors(router, auto=True)` to auto-fill responses from raise statements across the endpoint and its full dependency tree.",
+    "Verify declared vs actually-raised errors in CI with `check_raises(app)` or the `fastapi-typed-errors` CLI."
+  ]
+}
