@@ -51,9 +51,17 @@ def get_item(item_id: int) -> Annotated[Item, Raises[NotFoundError, ForbiddenErr
 
 Успешная (`200`) схема остаётся чистой — pydantic игнорирует маркер. Несколько ошибок на одном статусе становятся discriminated `oneOf`-union.
 
-### Формы записи и общие кортежи
+### Формы записи, переиспользование и композиция
 
-Общие наборы ошибок (например, ошибки авторизации) удобно выносить в кортеж и распаковывать:
+Объявлять ошибки можно несколькими способами, и они свободно комбинируются. Выбирайте тот, что читается лучше на месте вызова.
+
+**Инлайн-список** — разовый набор ошибок прямо на роуте:
+
+```python
+def get_item(item_id: int) -> Annotated[Item, Raises[NotFoundError, ForbiddenError]]: ...
+```
+
+**Общий кортеж** — повторяющийся набор выносим в кортеж и распаковываем, субскрипцией или через конструктор:
 
 ```python
 from typing import Final
@@ -68,20 +76,46 @@ def b() -> Annotated[Item, Raises(*TOKEN_ERRORS)]: ...
 
 Конструкторная форма `Raises(*TOKEN_ERRORS)` — статически «чистая» запасная для тайпчекеров.
 
+**Именованный алиас-маркер** — дайте доменному набору ошибок имя через PEP 695 `type`-алиас и переиспользуйте его на многих роутах (и даже на разных роутерах):
+
+```python
+type AuthErrors = Raises[RequiredTokenError, InvalidTokenError, WrongTokenTypeError]
+
+
+def me() -> Annotated[User, AuthErrors]: ...
+def stats() -> Annotated[Stats, AuthErrors, Raises[RateLimitedError]]: ...  # общий набор + локальная
+```
+
+**Композиция** — поставьте несколько маркеров рядом в одном `Annotated`: общий набор плюс специфичные для роута ошибки. Они **конкатенируются и дедуплицируются**, так что пересечение маркеров безвредно:
+
+```python
+def transfer() -> Annotated[Account, AuthErrors, OwnershipErrors, Raises[ConflictError]]: ...
+```
+
+| Когда | Что использовать |
+| --- | --- |
+| Разовый набор на одном роуте | инлайн `Raises[A, B]` |
+| Повторяющийся набор, распаковка ad-hoc | `Raises[*TUPLE]` / `Raises(*TUPLE)` (статически «чистая») |
+| Именованный доменный набор для широкого переиспользования | `type AuthErrors = Raises[...]` |
+| Общий набор + локальные добавки на роуте | композиция маркеров: `Annotated[T, AuthErrors, Raises[C]]` |
+
 !!! note "Валидация — на этапе импорта"
 
     `Raises[...]` проверяет каждый член сразу при вычислении (то есть при импорте модуля): это должен быть подкласс `BaseError` с объявленными `error_code` и `http_status`, список непуст. Иначе — `TypeError` с именем нарушителя.
 
 ### Что видит `Raises` в аннотации
 
-Маркер находится сквозь PEP 695 `type`-алиасы, вложенные `Annotated`-базы и члены union — задекларированный маркер **никогда не теряется молча**:
+Маркер находится сквозь PEP 695 `type`-алиасы (оборачивающие как всю аннотацию, так и **сам маркер** в позиции метаданных), вложенные `Annotated`-базы и члены union — задекларированный маркер **никогда не теряется молча**:
 
 ```python
 type ItemNF = Annotated[Item, Raises[NotFoundError]]
+type CommonRaises = Raises[NotFoundError, ForbiddenError]
 
 
-def a() -> ItemNF: ...  # алиас
+def a() -> ItemNF: ...  # алиас всей аннотации
 def b() -> Annotated[Item, Raises[NotFoundError]] | None: ...  # union-обёртка
+def c() -> Annotated[Item, CommonRaises, Raises[ConflictError]]: ...  # алиас-маркер в метаданных
+def d() -> Annotated[ItemNF, Raises[ConflictError]]: ...  # алиас-аннотация, вложенная в другую
 ```
 
 ## Семантика слияния

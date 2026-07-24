@@ -51,9 +51,17 @@ def get_item(item_id: int) -> Annotated[Item, Raises[NotFoundError, ForbiddenErr
 
 The success (`200`) schema stays clean — pydantic ignores the marker. Several errors on one status become a discriminated `oneOf` union.
 
-### Spellings and shared tuples
+### Spellings, sharing & composition
 
-Shared error sets (auth errors, say) are convenient to factor into a tuple and unpack:
+There is more than one way to declare errors, and they compose freely. Pick whichever reads best at the call site.
+
+**Inline list** — a one-off set of errors, right on the route:
+
+```python
+def get_item(item_id: int) -> Annotated[Item, Raises[NotFoundError, ForbiddenError]]: ...
+```
+
+**Shared tuple** — factor a recurring set into a tuple and unpack it, by subscription or via the constructor:
 
 ```python
 from typing import Final
@@ -68,20 +76,46 @@ def b() -> Annotated[Item, Raises(*TOKEN_ERRORS)]: ...
 
 The constructor form `Raises(*TOKEN_ERRORS)` is the statically clean fallback for type checkers.
 
+**Named marker alias** — give a domain error set a name with a PEP 695 `type` alias and reuse it across many routes (and even many routers):
+
+```python
+type AuthErrors = Raises[RequiredTokenError, InvalidTokenError, WrongTokenTypeError]
+
+
+def me() -> Annotated[User, AuthErrors]: ...
+def stats() -> Annotated[Stats, AuthErrors, Raises[RateLimitedError]]: ...  # shared set + a local one
+```
+
+**Composition** — put several markers side by side in one `Annotated`: a shared set plus route-specific errors. They are **concatenated and deduplicated**, so an overlap between markers is harmless:
+
+```python
+def transfer() -> Annotated[Account, AuthErrors, OwnershipErrors, Raises[ConflictError]]: ...
+```
+
+| When | Use |
+| --- | --- |
+| One-off set on a single route | inline `Raises[A, B]` |
+| Recurring set, unpacked ad-hoc | `Raises[*TUPLE]` / `Raises(*TUPLE)` (statically clean) |
+| Named domain set reused widely | `type AuthErrors = Raises[...]` |
+| Shared set + route-local additions | compose markers: `Annotated[T, AuthErrors, Raises[C]]` |
+
 !!! note "Validation is at import time"
 
     `Raises[...]` validates each member as soon as it is evaluated (i.e. at module import): it must be a `BaseError` subclass with a declared `error_code` and `http_status`, and the list is non-empty. Otherwise — a `TypeError` naming the offender.
 
 ### What Raises finds in the annotation
 
-The marker is found through PEP 695 `type` aliases, nested `Annotated` bases and union arms — a declared marker is **never dropped silently**:
+The marker is found through PEP 695 `type` aliases (wrapping the whole annotation **or** the marker itself in metadata), nested `Annotated` bases and union arms — a declared marker is **never dropped silently**:
 
 ```python
 type ItemNF = Annotated[Item, Raises[NotFoundError]]
+type CommonRaises = Raises[NotFoundError, ForbiddenError]
 
 
-def a() -> ItemNF: ...  # alias
+def a() -> ItemNF: ...  # alias of the whole annotation
 def b() -> Annotated[Item, Raises[NotFoundError]] | None: ...  # union wrapper
+def c() -> Annotated[Item, CommonRaises, Raises[ConflictError]]: ...  # aliased marker in metadata
+def d() -> Annotated[ItemNF, Raises[ConflictError]]: ...  # aliased annotation nested in another
 ```
 
 ## Merge semantics

@@ -68,6 +68,7 @@ class Item(BaseModel):
 
 type AliasedItem = Annotated[Item, Raises[NotFoundError]]
 type RawStream = StreamingResponse
+type CommonRaises = Raises[NotFoundError, ForbiddenError]
 
 
 def conflicting(q: int = 1) -> Annotated[Item, Raises[ConflictError]]:
@@ -271,6 +272,35 @@ def test_alias_nested_inside_annotated(router: APIRouter) -> None:
         raise NotImplementedError
 
     responses = _responses(router, "/nested")
+
+    assert "404" in responses
+    assert "403" in responses
+
+
+@requires_modern_fastapi
+def test_aliased_marker_in_metadata_detected(router: APIRouter) -> None:
+    """A ``Raises`` marker shared via a ``type`` alias is not dropped in metadata."""
+
+    @router.get("/shared")
+    def endpoint() -> Annotated[Item, CommonRaises, Raises[ConflictError]]:
+        raise NotImplementedError
+
+    responses = _responses(router, "/shared")
+
+    assert "404" in responses
+    assert "403" in responses
+    assert "409" in responses
+
+
+@requires_modern_fastapi
+def test_aliased_marker_sole_metadata_detected(router: APIRouter) -> None:
+    """An aliased marker as the only metadata element is unwrapped and read."""
+
+    @router.get("/soleshared")
+    def endpoint() -> Annotated[Item, CommonRaises]:
+        raise NotImplementedError
+
+    responses = _responses(router, "/soleshared")
 
     assert "404" in responses
     assert "403" in responses

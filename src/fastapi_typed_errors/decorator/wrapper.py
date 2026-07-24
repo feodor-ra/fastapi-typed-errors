@@ -152,6 +152,20 @@ def _return_annotation(fn: Callable[..., Any], path: object) -> object:
     return hints.get("return")
 
 
+def _unwrap_type_alias(annotation: object) -> object:
+    """Peel PEP 695 ``type`` aliases off an annotation, following the chain.
+
+    Args:
+        annotation: Any annotation object, possibly a ``TypeAliasType``.
+
+    Returns:
+        object: The underlying value with all ``type`` aliases resolved.
+    """
+    while isinstance(annotation, TypeAliasType):
+        annotation = annotation.__value__
+    return annotation
+
+
 def _find_raises(annotation: object) -> tuple[Raises, ...]:
     """Extract ``Raises`` markers from a return annotation, recursively.
 
@@ -170,8 +184,7 @@ def _find_raises(annotation: object) -> tuple[Raises, ...]:
         TypeError: On a bare ``Raises`` instance used as the whole annotation,
             or an unparametrized ``Raises`` class inside ``Annotated``.
     """
-    while isinstance(annotation, TypeAliasType):
-        annotation = annotation.__value__
+    annotation = _unwrap_type_alias(annotation)
     if annotation is None:
         return ()
     if isinstance(annotation, Raises):
@@ -180,6 +193,10 @@ def _find_raises(annotation: object) -> tuple[Raises, ...]:
     origin = get_origin(annotation)
     if origin is Annotated:
         base, *metadata = get_args(annotation)
+        # Unwrap each metadata element too: a marker shared via a PEP 695 `type`
+        # alias (`type Common = Raises[...]`) sits here as a TypeAliasType, and
+        # must be seen through — otherwise a declared marker is dropped silently.
+        metadata = [_unwrap_type_alias(meta) for meta in metadata]
         if any(meta is Raises for meta in metadata):
             msg = "Raises must be parametrized: Annotated[Model, Raises[Error, ...]]"
             raise TypeError(msg)
@@ -201,8 +218,7 @@ def _annotated_base(annotation: object) -> object:
             ``Response`` / ``None`` normalization check).
     """
     while True:
-        while isinstance(annotation, TypeAliasType):
-            annotation = annotation.__value__
+        annotation = _unwrap_type_alias(annotation)
         if get_origin(annotation) is not Annotated:
             return annotation
         annotation = get_args(annotation)[0]
