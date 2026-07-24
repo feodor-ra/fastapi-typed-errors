@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-typed-errors"
-version = "0.1.0"
+version = "1.0.0"
 description = "Typed error responses for FastAPI: Literal error codes, discriminated unions in OpenAPI, single source of truth"
 readme = "README.md"
 authors = [
@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 keywords = ["fastapi", "errors", "openapi", "typed", "pydantic"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: FastAPI",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
