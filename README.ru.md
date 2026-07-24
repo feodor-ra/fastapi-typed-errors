@@ -2,7 +2,19 @@
 
 [English](README.md) · **Русский**
 
-![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green) [![Coverage Status](https://coveralls.io/repos/github/feodor-ra/fastapi-typed-errors/badge.svg?branch=main)](https://coveralls.io/github/feodor-ra/fastapi-typed-errors?branch=main) [![Docs](https://img.shields.io/badge/docs-online-blueviolet)](https://feodor-ra.github.io/fastapi-typed-errors/ru/)
+[![PyPI - Version](https://img.shields.io/pypi/v/fastapi-typed-errors)](https://pypi.org/project/fastapi-typed-errors/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/fastapi-typed-errors)
+![PyPI - Status](https://img.shields.io/pypi/status/fastapi-typed-errors)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/fastapi-typed-errors)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Pydantic v2](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json)](https://pydantic.dev)
+
+![GitHub Release](https://img.shields.io/github/v/release/feodor-ra/fastapi-typed-errors)
+![GitHub Repo stars](https://img.shields.io/github/stars/feodor-ra/fastapi-typed-errors?style=flat)
+![GitHub last commit](https://img.shields.io/github/last-commit/feodor-ra/fastapi-typed-errors)
+[![CI](https://github.com/feodor-ra/fastapi-typed-errors/actions/workflows/ci.yml/badge.svg)](https://github.com/feodor-ra/fastapi-typed-errors/actions/workflows/ci.yml)
+[![Coverage Status](https://coveralls.io/repos/github/feodor-ra/fastapi-typed-errors/badge.svg?branch=main)](https://coveralls.io/github/feodor-ra/fastapi-typed-errors?branch=main)
+[![Docs](https://img.shields.io/badge/docs-mkdocs-blue)](https://feodor-ra.github.io/fastapi-typed-errors/ru/)
 
 **Типизированные HTTP-ошибки для FastAPI** — точные `Literal`-коды в OpenAPI, discriminated `oneOf`-union по полю `code` и единый источник правды: сам класс ошибки.
 
@@ -93,3 +105,15 @@ def test_error_contracts() -> None:
 ## Лицензия
 
 [MIT](LICENSE).
+
+---
+
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json)](https://github.com/astral-sh/ty)
+[![pytest](https://img.shields.io/badge/tested_with-pytest-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Material for MkDocs](https://img.shields.io/badge/Material_for_MkDocs-526CFE?logo=materialformkdocs&logoColor=white)](https://squidfunk.github.io/mkdocs-material/)
+[![Conventional Commits](https://img.shields.io/badge/Conventional_Commits-1.0.0-FE5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org)
+[![Semantic Versions](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--versions-e10079.svg)](https://github.com/feodor-ra/fastapi-typed-errors/releases)
+
+![GitHub License](https://img.shields.io/github/license/feodor-ra/fastapi-typed-errors)
