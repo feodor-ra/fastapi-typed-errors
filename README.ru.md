@@ -2,7 +2,7 @@
 
 [English](README.md) · **Русский**
 
-![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green) [![Docs](https://img.shields.io/badge/docs-online-blueviolet)](https://feodor-ra.github.io/fastapi-typed-errors/ru/)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green) [![Coverage Status](https://coveralls.io/repos/github/feodor-ra/fastapi-typed-errors/badge.svg?branch=main)](https://coveralls.io/github/feodor-ra/fastapi-typed-errors?branch=main) [![Docs](https://img.shields.io/badge/docs-online-blueviolet)](https://feodor-ra.github.io/fastapi-typed-errors/ru/)
 
 **Типизированные HTTP-ошибки для FastAPI** — точные `Literal`-коды в OpenAPI, discriminated `oneOf`-union по полю `code` и единый источник правды: сам класс ошибки.
 

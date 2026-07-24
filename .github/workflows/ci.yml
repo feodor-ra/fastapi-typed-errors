@@ -34,6 +34,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync
       - run: uv run pytest --cov
+      # Report coverage from a single matrix leg (identical 100% across versions); never from test-floor.
+      - name: Generate lcov report
+        if: matrix.python-version == '3.12'
+        run: uv run coverage lcov -o coverage.lcov
+      - name: Upload coverage to Coveralls
+        if: matrix.python-version == '3.12'
+        uses: coverallsapp/github-action@v2
+        with:
+          file: coverage.lcov
 
   test-floor:
     # Lowest supported direct dependencies (FastAPI 0.115, pydantic 2.9): eager routing regime.
