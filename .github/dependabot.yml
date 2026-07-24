@@ -1,0 +1,34 @@
+version: 2
+
+updates:
+  # Python tooling: update the dev and docs dependency groups only.
+  # allow=development limits PRs to non-production deps; the explicit ignore is a
+  # belt-and-suspenders guard so the runtime contract (fastapi, pydantic) is never auto-bumped.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    allow:
+      - dependency-type: "development"
+    ignore:
+      - dependency-name: "fastapi"
+      - dependency-name: "pydantic"
+    groups:
+      python-dev:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # GitHub Actions pinned in the workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
