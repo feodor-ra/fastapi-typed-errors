@@ -11,6 +11,12 @@ from walker_helpers import ConflictError, ForbiddenError, NotFoundError, TokenEr
 
 from fastapi_typed_errors import Raises, check_raises, with_errors
 
+# The lazy include model (with per-route dedup) is FastAPI ≥ 0.139; older versions copy routes eagerly.
+requires_modern_fastapi = pytest.mark.skipif(
+    not hasattr(fastapi.routing, "iter_route_contexts"),
+    reason="requires FastAPI >= 0.139 (lazy include_router)",
+)
+
 oauth = OAuth2PasswordBearer(tokenUrl="token")
 
 
@@ -227,6 +233,7 @@ def test_websocket_route_ignored() -> None:
     assert report.checked == 1
 
 
+@requires_modern_fastapi
 def test_double_include_deduplicated() -> None:
     """A router included under two prefixes is checked once."""
     child = APIRouter()
@@ -258,7 +265,7 @@ def test_wrapped_router_still_checked() -> None:
 
 def test_fallback_without_iter_route_contexts(monkeypatch: pytest.MonkeyPatch) -> None:
     """Without ``iter_route_contexts`` a flat ``routes`` walk is used."""
-    monkeypatch.delattr(fastapi.routing, "iter_route_contexts")
+    monkeypatch.delattr(fastapi.routing, "iter_route_contexts", raising=False)
     router = APIRouter()
     router.add_api_route("/u", ep_undeclared, methods=["GET"])
 

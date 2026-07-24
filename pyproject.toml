@@ -10,6 +10,18 @@ requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 keywords = ["fastapi", "errors", "openapi", "typed", "pydantic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP",
+    "Typing :: Typed",
+]
 dependencies = [
     # 0.137/0.138 introduced the lazy _IncludedRouter tree but not the supported
     # iter_route_contexts iterator — nested includes cannot be walked there; skip that gap.
@@ -22,6 +34,12 @@ cli = ["typer>=0.15"]
 
 [project.scripts]
 fastapi-typed-errors = "fastapi_typed_errors.analysis.cli:main"
+
+[project.urls]
+Homepage = "https://feodor-ra.github.io/fastapi-typed-errors/"
+Documentation = "https://feodor-ra.github.io/fastapi-typed-errors/"
+Repository = "https://github.com/feodor-ra/fastapi-typed-errors"
+Issues = "https://github.com/feodor-ra/fastapi-typed-errors/issues"
 
 [build-system]
 requires = ["uv_build>=0.11.30,<0.12.0"]
@@ -54,6 +72,11 @@ convention = "google"
     "magic-value-comparison",     # PLR2004: comparing to literal counts/exit codes is normal in tests
     "import-private-name",        # PLC2701: tests exercise the package's private internals
 ]
+"scripts/**" = [
+    "assert",                     # S101: the packaging smoke test asserts
+    "implicit-namespace-package", # INP001: scripts is not a package
+    "raw-string-in-exception",    # EM101: literal details mirror the package's own pattern
+]
 
 [tool.ty.rules]
 all = "error"
@@ -73,6 +96,8 @@ fail_under = 100
 [dependency-groups]
 dev = [
     "anyio~=4.14.2",
+    # Both TestClient transports: old starlette (fastapi floor) imports httpx, new starlette imports httpx2.
+    "httpx~=0.28.0",
     "httpx2~=2.7.0",
     "pytest~=9.1.1",
     "pytest-cov~=7.1.0",

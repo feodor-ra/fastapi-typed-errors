@@ -7,6 +7,7 @@ from http import HTTPStatus
 from typing import Annotated, Any, Literal, cast
 
 import fastapi.dependencies.utils
+import fastapi.routing
 import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.responses import Response, StreamingResponse
@@ -15,6 +16,13 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from fastapi_typed_errors import BaseError, Raises, with_errors
+
+# FastAPI ≥ 0.139 ships iter_route_contexts and the newer pydantic that resolves PEP 695 aliases /
+# tolerates unresolvable parameter hints. Older stacks handle those edges differently upstream.
+requires_modern_fastapi = pytest.mark.skipif(
+    not hasattr(fastapi.routing, "iter_route_contexts"),
+    reason="requires FastAPI >= 0.139 (lazy routing + modern pydantic)",
+)
 
 
 class Code(StrEnum):
@@ -243,6 +251,7 @@ def test_none_annotation_normalized(router: APIRouter) -> None:
     assert "content" not in responses["204"]
 
 
+@requires_modern_fastapi
 def test_alias_return_annotation(router: APIRouter) -> None:
     """A PEP 695 ``type`` alias is unwrapped before marker extraction."""
 
@@ -253,6 +262,7 @@ def test_alias_return_annotation(router: APIRouter) -> None:
     assert "404" in _responses(router, "/alias")
 
 
+@requires_modern_fastapi
 def test_alias_nested_inside_annotated(router: APIRouter) -> None:
     """Markers inside an aliased ``Annotated`` base are merged with outer ones."""
 
@@ -301,6 +311,7 @@ def test_unresolvable_hints_without_marker_pass_through(router: APIRouter) -> No
     assert responses["200"]["content"]["application/json"]["schema"]["$ref"].endswith("Item")
 
 
+@requires_modern_fastapi
 def test_unresolvable_parameter_hints_pass_through(router: APIRouter) -> None:
     """Broken parameter hints with no return annotation register exactly like on stock FastAPI."""
 
@@ -548,7 +559,7 @@ def test_auto_falls_back_without_dependency_helper(
 ) -> None:
     """If FastAPI's dependency helpers move, ``auto`` degrades to the endpoint only."""
     # Removing this name fails only our lazy import; FastAPI's routing holds its own binding.
-    monkeypatch.delattr(fastapi.dependencies.utils, "get_parameterless_sub_dependant")
+    monkeypatch.delattr(fastapi.dependencies.utils, "get_parameterless_sub_dependant", raising=False)
 
     @auto_router.get("/fallback")
     def endpoint(_: Annotated[None, Depends(raise_forbidden_dep)]) -> Item:
