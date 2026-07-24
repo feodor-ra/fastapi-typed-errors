@@ -18,7 +18,7 @@ jobs:
       id-token: write # PyPI trusted publishing (OIDC) — no stored token
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: "3.12"
