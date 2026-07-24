@@ -42,7 +42,7 @@ Repository = "https://github.com/feodor-ra/fastapi-typed-errors"
 Issues = "https://github.com/feodor-ra/fastapi-typed-errors/issues"
 
 [build-system]
-requires = ["uv_build>=0.11.30,<0.12.0"]
+requires = ["uv_build>=0.11.32,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.ruff]
@@ -98,11 +98,11 @@ dev = [
     "anyio~=4.14.2",
     # Both TestClient transports: old starlette (fastapi floor) imports httpx, new starlette imports httpx2.
     "httpx~=0.28.0",
-    "httpx2~=2.7.0",
+    "httpx2~=2.9.1",
     "pytest~=9.1.1",
     "pytest-cov~=7.1.0",
-    "ruff==0.15.22",
-    "ty==0.0.61",
+    "ruff==0.16.0",
+    "ty==0.0.63",
     "typer~=0.27.0",
 ]
 docs = [
