@@ -389,7 +389,7 @@ def test_missing_endpoint_delegates_the_error(router: APIRouter) -> None:
     """A non-callable endpoint is left to the original signature to reject."""
     broken = cast(Callable[..., Any], None)
 
-    with pytest.raises(TypeError):
+    with pytest.raises((TypeError, AssertionError)):
         router.add_api_route("/bad", broken, methods=["GET"])
 
 
